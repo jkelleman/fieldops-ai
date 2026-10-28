@@ -2,199 +2,217 @@
   <img src="assets/banner.svg" alt="FieldOps: edge AI for orchard pest management" width="100%">
 </p>
 
-<p align="center">
-  <img alt="Dell x NVIDIA AI Hackathon, Cambridge MA, invite-only" src="https://img.shields.io/badge/Dell%20x%20NVIDIA%20AI%20Hackathon-Cambridge%2C%20MA%20(invite--only)-76B900?style=flat-square&logo=nvidia&logoColor=white">
-  <img alt="Team entry" src="https://img.shields.io/badge/team%20entry-4%20engineers-2d6a4f?style=flat-square">
-  <img alt="Runs on Dell GB10 (NVIDIA Grace Blackwell)" src="https://img.shields.io/badge/hardware-Dell%20GB10%20(Grace%20Blackwell)-76B900?style=flat-square&logo=nvidia&logoColor=white">
-  <img alt="Local inference" src="https://img.shields.io/badge/inference-local%20on--device-1f6feb?style=flat-square">
-  <br>
-  <img alt="Python" src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white">
-  <img alt="YOLO26s detector (Ultralytics)" src="https://img.shields.io/badge/vision-YOLO26s%20(Ultralytics)-111F68?style=flat-square">
-  <img alt="Qwen3.6 on vLLM" src="https://img.shields.io/badge/agent%20LLM-Qwen3.6%20on%20vLLM-6f42c1?style=flat-square">
-  <img alt="SQLite" src="https://img.shields.io/badge/store-SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white">
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square"></a>
-</p>
+# FieldOps: Edge AI for Orchard Pest Management
 
-# FieldOps
+**Count the insects. Start the biological clock. Tell the grower when to act.**
 
-**Edge AI for orchard pest management: count the insects, start the biological clock, and tell the grower when to act.**
+FieldOps turns sticky-trap photos and seasonal weather into a clear treatment window. Built by a
+four-person team in 24 hours for the invite-only Dell x NVIDIA AI Hackathon in Cambridge,
+Massachusetts, on October 3, 2026, it brings computer vision, deterministic pest modeling, and a
+local language model together on a Dell GB10 with NVIDIA Grace Blackwell.
 
-FieldOps turns photos of sticky traps into species counts, tracks the pest flight curve across a season,
-and calls the treatment window with a deterministic degree-day model. Vision, the agent LLM, speech and
-timing all run locally on a single Dell GB10 (NVIDIA Grace Blackwell).
+The season replay—the core demo—runs locally without live inference or a network connection.
+Telegram photo transport and phone alerts require internet access.
 
-> **Hackathon entry.** Built by a four-person team in one day for the invite-only Dell x NVIDIA AI
-> Hackathon in Cambridge, MA, on October 3, 2026.
+**[Final presentation](pitch/2026-10-03-fieldops.html)** ·
+[Two-minute demo film](pitch/video/fieldops-demo.mp4) ·
+[Presenter runbook](pitch/DEMO.md)
 
-**[Final presentation](pitch/2026-10-03-fieldops.html)** · [Two-minute demo film](pitch/video/fieldops-demo.mp4) · [Transcript](pitch/video/transcript.txt) · [Presenter runbook](pitch/DEMO.md)
+## What it does
 
----
+- **Counts pests from trap photos.** YOLO26s identifies codling moths, oriental fruit moths, and
+  spotted lanternflies while treating gnats and debris as separate classes.
+- **Finds biofix.** The decision engine detects the first sustained catch that starts the pest's
+  biological clock.
+- **Tracks degree-days.** Daily high and low temperatures drive an auditable, species-specific
+  model.
+- **Calls the treatment window.** When accumulated degree-days cross the configured threshold,
+  FieldOps identifies the spray window.
+- **Explains the result.** A local LLM phrases alerts and answers questions such as “Why Thursday?”
+  It reads the decision; it does not calculate it.
 
-## The problem
-
-Growers inspect trap catches and combine those observations with weather to decide when a
-block needs attention. Manual checks leave gaps between observations, and counts alone do not
-show where a pest is in its development cycle.
-
-FieldOps brings photo counting, season activity, and a deterministic degree-day clock into one
-view. The demo uses a committed synthetic season: six blocks and eighteen traps. It demonstrates
-the workflow; field accuracy and time savings still need validation with growers.
-
-## What FieldOps does
-
-- **Counts insects on a sticky trap** from a photo, by species. Send the Telegram bot a picture of
-  a trap card and a YOLO26 detector on the GB10 counts codling moths, oriental fruit moths and
-  spotted lanternflies, ignoring gnats and debris.
-- **Tracks the flight curve** across the season and detects **biofix** — the first sustained catch,
-  the moment the pest clock starts.
-- **Accumulates degree-days** from daily high/low temperatures once biofix is set.
-- **Calls the spray window** when accumulated degree-days cross the species threshold.
-- **Buzzes the grower's phone** in plain language: *"Biofix reached on block C. Spray window opens
-  Thursday."* — and answers follow-ups like *"why Thursday?"*
-
-The counting is the party trick. The decision is the product.
+> **The counting is the party trick. The decision is the product.**
 
 ## How it works
 
 ```text
- trap photo ──▶ vision ──▶ { trap_id, timestamp, species, count } ──▶ store (SQLite)
-              (YOLO26, GPU)                                                 │
-                                                                            ▼
- daily temps ──────────────────────────────────────────────────────▶    decide
-                                                       biofix · degree-days · threshold
+Trap photo ──▶ YOLO26s vision ──▶ Species counts ──▶ SQLite store ──┐
+                                                                    │
+Daily temperatures ────────────────────────────────────────────────┴──▶ Python decision engine
                                                                             │
                                                                             ▼
-                                                           agent (local LLM) ──▶ phone alert
-                                                           phrases it, answers questions
+                                                            Local LLM phrases the result
+                                                                            │
+                                                                            ▼
+                                                               Telegram alert to grower
 ```
 
-The store is the single source of truth `decide` reads, and it holds both halves of the
-decision: trap counts and the daily temperatures the degree-day clock runs on. It is rebuilt from
-the committed `data/season.csv`, so a reload is deterministic and the replay comes out identical
-every time. Live counts from the vision layer can append to the same store (opt-in, so a demo
-photo never moves the spray dates). With no store present,
-`decide` falls back to reading the CSV directly.
+The replay uses committed seasonal data and deterministic Python. It does not depend on the camera,
+vision model, or LLM, so a live-service failure cannot break the demo. Photo counts only enter the
+store when explicitly requested.
 
-Two deliberate splits:
+<details>
+<summary>Architecture and reliability</summary>
 
-- **The decision is plain Python, not a model.** Biofix and degree-day math are deterministic and
-  auditable. An LLM that hallucinates a spray date costs someone a harvest.
-- **The LLM only phrases and explains.** It reads the decision, writes the grower-facing message,
-  and answers questions about it. It never computes the answer.
+The system keeps decision-making separate from language generation:
 
-## Why local
+1. **The decision engine owns the numbers.** Biofix, degree-days, and spray-window thresholds are
+   calculated in plain Python using species configuration. The result is deterministic and
+   auditable.
+2. **The LLM is the translator.** It turns decision results into grower-facing language and
+   answers follow-up questions. It does not decide when to spray or compute the metrics.
 
-Vision inference, the local agent model, speech generation, and deterministic timing run on
-the GB10. The committed season replay also works without internet. Telegram photo transport and
-message delivery require connectivity; using Telegram sends those messages through its service.
-Cloud tools used to produce the narrated film are separate from product inference.
+The replay lane runs from the committed `data/season.csv` through SQLite and `decide` to the
+dashboard timeline. The live lane accepts a Telegram photo, runs YOLO26s, and returns counts.
+Live counts are opt-in for the store, so a demo photo cannot shift replay dates.
 
-## Results
+</details>
 
-The detector is YOLO26s, trained entirely on synthetic trap cards with exact labels. Our first model scored
-mAP50 0.995 on its own validation set and still failed on phone-style photos, so we added a held-out
-phone-photo stress test and fine-tuned on it (v2). Held-out, seed-separated phone-style photos (200):
+## Vision results
 
-| | v1 (clean cards) | **v2 (+ phone-style fine-tune)** |
-|---|---|---|
-| Codling moth, mean abs. error | 3.67 | **0.07** (189/200 exact) |
-| Oriental fruit moth, mean abs. error | 4.65 | **0.04** (192/200 exact) |
-| Spotted lanternfly, mean abs. error | 0.12 | **0.00** |
+YOLO26s was evaluated on 200 held-out, phone-style synthetic trap photos. Fine-tuning on
+phone-style images substantially reduced counting error compared with the clean-card model:
 
-These are best-case numbers: the test uses the same kinds of image effects v2 trained on. Accuracy on real
-traps is unmeasured and is the next step. Method, data splits and the overfitting analysis are in
-[fieldops/yolo/README.md](fieldops/yolo/README.md).
+| Pest | Clean-card model MAE | Phone-fine-tuned MAE | Exact counts |
+|---|---:|---:|---:|
+| Codling moth | 3.67 | **0.07** | 189 / 200 |
+| Oriental fruit moth | 4.65 | **0.04** | 192 / 200 |
+| Spotted lanternfly | 0.12 | **0.00** | 200 / 200 |
 
-## Components
+These are best-case results: the phone-style test uses image effects similar to those used during
+fine-tuning. Accuracy on photos of real traps has not yet been measured.
 
-Working end to end: season data, the decision engine, the replay dashboard, and the alert.
-`fieldops/season.py` generates a season, `fieldops/decide.py` finds biofix, accumulates
-degree-days and calls the spray window, and `--replay` writes the timeline the dashboard plays.
-`fieldops/agent.py` turns an event into a sentence for the grower and `fieldops/alert.py` sends it
-to a phone, and `fieldops/api.py` serves both the dashboard trigger and the OpenClaw tools. Also
-here: a synthetic trap-image generator with ground-truth counts
-(`fieldops/synth_traps.py`), the deck (`pitch/index.html`) and the presenter runbook
-(`pitch/DEMO.md`).
+<details>
+<summary>How the vision model was evaluated</summary>
 
-**Vision has landed.** `fieldops/vision.py` counts pests in a trap photo with a YOLO26 detector
-trained on synthetic cards (`models/fieldops-yolo26s-v2.pt`). The OpenClaw agent on Telegram sends
-photos to it through `POST /count` on the tools API. How it was trained, how accurate it is, and
-the overfitting we caught and fixed are in [fieldops/yolo/README.md](fieldops/yolo/README.md).
+The detector is trained on synthetic trap cards with exact labels. A clean synthetic validation
+set initially gave an impressive score but did not predict performance on phone-style photos.
+FieldOps added a separate, seed-held-out phone-photo stress test and fine-tuned the model against
+phone-style images. The results above are from that test, not real orchard traps.
 
-**Models on the GB10:** the agent's LLM is Qwen3.6-35B-A3B (NVFP4) on the local vLLM server at
-`127.0.0.1:8000`, and counting is YOLO26s in a GPU container. Both run offline.
+See the [vision model notes](fieldops/yolo/README.md) for the training setup, data splits, and
+evaluation commands.
 
-**On the GB10 everything starts at boot:** `bash deploy/install.sh` installs `fieldops.target`
-(OpenClaw sandbox + Telegram, vision service, tools API) as systemd user services. See
-[deploy/README.md](deploy/README.md). See [PLAN.md](PLAN.md) for the order of work and open decisions.
+</details>
+
+## GB10 stack
+
+The product's inference and decision path is designed to run locally:
+
+- **Hardware:** Dell GB10 development platform with NVIDIA Grace Blackwell.
+- **Vision:** Ultralytics YOLO26s on the GPU.
+- **Language model:** Qwen3.6-35B-A3B in NVFP4 format, served locally with vLLM.
+- **Decision and storage:** Python and SQLite.
+- **Agent and sandbox:** NemoClaw, OpenClaw, and OpenShell.
+- **Speech:** Kokoro local speech synthesis.
+
+Telegram delivery uses Telegram's service and therefore requires a network connection. See
+[ORCHESTRATION.md](ORCHESTRATION.md) for process details, ports, and offline behavior.
+
+<details>
+<summary>Start services automatically on the GB10</summary>
+
+The GB10 deployment installs `fieldops.target` as systemd user services for the OpenClaw sandbox,
+vision service, and tools API:
+
+```bash
+bash deploy/install.sh
+```
+
+See [deploy/README.md](deploy/README.md) for prerequisites and service management.
+
+</details>
 
 ## Quick start
 
+Run from the repository root. The local model and GPU vision commands require the GB10 environment;
+the season replay and dashboard can run independently.
+
+<details>
+<summary>1. Check local models and configure Telegram</summary>
+
 ```bash
-python -m fieldops.check_models                  # do the local LLM and VLM load? run this first
-python -m fieldops.telegram_setup                # one-time: connect the phone alert to your Telegram bot
-python -m fieldops.season                        # regenerate data/season.csv
-python -m fieldops.weather --normals             # refetch the average temperatures behind the spray-date estimate (needs network)
-python -m fieldops.store --load data/season.csv  # build the store: counts + temperatures
-python -m fieldops.decide                        # self-test, then print each block's milestones
-python -m fieldops.decide --replay               # ...and write the dashboard timeline
-python -m fieldops.agent --status                # what the agent's tools return right now
-python -m fieldops.api                           # tool server: dashboard buzz + OpenClaw tools + /count
+# Check that the local LLM and vision model load
+python -m fieldops.check_models
 
-# vision (GPU container; details in fieldops/yolo/README.md)
-bash fieldops/yolo/run.sh serve                  # YOLO counting service on 127.0.0.1:8767
-curl --data-binary @data/traps/trap_05_codling050.jpg "localhost:8765/count?trap_id=block-c-04"
-bash fieldops/yolo/run.sh eval                   # score the 6 reference cards
-bash fieldops/yolo/run.sh phone-test --n 200     # accuracy on phone-style photos (overfitting check)
-open dashboard/index.html                        # the replay, straight from disk, no server
-open pitch/index.html                            # the deck; arrow keys to advance
-
-python -m fieldops.decide --csv                  # bypass the store and read the CSV directly
-
-# ground-truth trap counts as test data. Use a scratch --db: these traps sit in block C on a
-# real season date, so loading them into the demo store spikes its flight curve.
-python -m fieldops.store --db data/test.db --load-traps data/traps/manifest.json
-
-# two seasons of multi-species history in its own store, for exercising queries and the
-# vision path. 4,665 readings, 30 traps, 10 species, irregular check times.
-python -m fieldops.history
+# One-time setup for phone alerts
+python -m fieldops.telegram_setup
 ```
 
-## Repo map
+Telegram setup and delivery require network access.
 
-| Path | What's in it |
+</details>
+
+<details>
+<summary>2. Build the season data and store</summary>
+
+```bash
+# Regenerate the committed synthetic season data
+python -m fieldops.season
+
+# Fetch historical temperature normals (requires network access)
+python -m fieldops.weather --normals
+
+# Build the SQLite store from the season CSV
+python -m fieldops.store --load data/season.csv
+```
+
+</details>
+
+<details>
+<summary>3. Replay the decision and run the local API</summary>
+
+```bash
+# Run decision self-tests and write the dashboard timeline
+python -m fieldops.decide --replay
+
+# Start the tools API and dashboard alert endpoint
+python -m fieldops.api
+```
+
+Open `dashboard/index.html` to play the season replay. The replay does not require the API, live
+vision, or a language model.
+
+</details>
+
+<details>
+<summary>4. Run live vision and evaluation</summary>
+
+These commands use the GPU vision container. See
+[fieldops/yolo/README.md](fieldops/yolo/README.md) for container setup.
+
+```bash
+# Start the vision service
+bash fieldops/yolo/run.sh serve
+
+# Evaluate the reference trap cards
+bash fieldops/yolo/run.sh eval
+
+# Run the 200-image phone-style stress test
+bash fieldops/yolo/run.sh phone-test --n 200
+```
+
+</details>
+
+## Project guide
+
+| Path | Description |
 |---|---|
-| [PLAN.md](PLAN.md) | Implementation plan — phases, tasks, interfaces, risks, definition of done. |
-| [ORCHESTRATION.md](ORCHESTRATION.md) | How the pieces run together: processes, ports, data flow, start order, failure modes. |
-| [AGENTS.md](AGENTS.md) | Build conventions for coding agents and teammates. Read before writing code. |
-| [FieldOps_Hackathon_Plan.md](FieldOps_Hackathon_Plan.md) | The pitch: story beats, demo script, scope calls. |
-| [dashboard/TIMELINE_CONTRACT.md](dashboard/TIMELINE_CONTRACT.md) | The `decide → dashboard` timeline shape and the decision rules. Frozen. |
-| [fieldops/synth_traps.py](fieldops/synth_traps.py) | Generates synthetic trap photos with ground-truth counts into [data/traps/](data/traps/). |
-| [fieldops/vision.py](fieldops/vision.py) | The vision lane: YOLO counting service and CLI, contract records out. |
-| [fieldops/yolo/](fieldops/yolo/README.md) | Dataset generator, training, counting, phone-photo stress test, GPU container. |
-| [models/](models/README.md) | Trained detector weights and their model card. |
-| [openclaw/](openclaw/) | The OpenClaw skill (tools + photo routing) and the sandbox network policy. |
-| [deploy/](deploy/README.md) | systemd units for the GB10, plus the CI deploy unit. |
-
-## Stack
-
-Python on a Dell/NVIDIA GB10. A YOLO26 detector for counting, Qwen3.6 on vLLM for the agent
-layer, Kokoro for local speech, NemoClaw + OpenClaw + OpenShell for the sandboxed Telegram agent,
-SQLite for counts and weather, and a single-page dashboard. No cloud services anywhere in the
-product's inference path.
+| [ORCHESTRATION.md](ORCHESTRATION.md) | Processes, ports, data flow, and failure modes |
+| [PLAN.md](PLAN.md) | Implementation plan and remaining work |
+| [AGENTS.md](AGENTS.md) | Integration contracts and coding conventions |
+| [dashboard/TIMELINE_CONTRACT.md](dashboard/TIMELINE_CONTRACT.md) | Decision-to-dashboard timeline contract |
+| [fieldops/yolo/README.md](fieldops/yolo/README.md) | Vision training, evaluation, and GPU setup |
+| [deploy/README.md](deploy/README.md) | GB10 systemd installation |
 
 ## Limitations
 
-- The demo runs on a committed **synthetic season** (six blocks, eighteen traps). Field accuracy,
-  yield impact and time savings are not claimed and still need validation with growers.
-- Detector accuracy is measured on synthetic and phone-style synthetic photos, not on real traps.
-- The 3D drone survey is a simulation, and the drone footage in the film is labeled concept footage.
-- Telegram photo transport and alert delivery need a network connection; everything else is local.
+- The replay uses a committed synthetic season; field accuracy, yield impact, and time savings have
+  not been validated with growers.
+- Detector metrics are from synthetic and phone-style synthetic images, not real orchard traps.
+- The replay works offline, but Telegram photo transport and phone-alert delivery require a network.
 
 ## Team
-
-A four-person team, working in parallel across vision, decision logic, agent and alerting, and the
-dashboard and presentation.
 
 | Name | GitHub |
 |---|---|
